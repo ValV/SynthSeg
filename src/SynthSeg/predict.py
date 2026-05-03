@@ -469,7 +469,8 @@ def build_model(path_model,
     # smooth posteriors if specified
     if sigma_smoothing > 0:
         last_tensor = net.output
-        last_tensor._keras_shape = tuple(last_tensor.get_shape().as_list())
+        # FIX: Tensorflow 2.13+ must handle shape inference automatically
+        #last_tensor._keras_shape = tuple(last_tensor.get_shape().as_list())
         last_tensor = layers.GaussianBlur(sigma=sigma_smoothing)(last_tensor)
         net = Model(inputs=net.inputs, outputs=last_tensor)
 

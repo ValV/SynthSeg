@@ -41,9 +41,10 @@ def metrics_model(input_model, label_list, metrics='dice'):
     labels_gt = KL.Lambda(lambda x: tf.one_hot(tf.cast(x, dtype='int32'), depth=n_labels, axis=-1))(labels_gt)
     labels_gt = KL.Reshape(input_shape)(labels_gt)
 
-    # make sure the tensors have the right keras shape
-    last_tensor._keras_shape = tuple(last_tensor.get_shape().as_list())
-    labels_gt._keras_shape = tuple(labels_gt.get_shape().as_list())
+    # FIX: make sure the tensors have the right keras shape
+    # Tensorflow 2.13+ must handle shape inference automatically
+    #last_tensor._keras_shape = tuple(last_tensor.get_shape().as_list())
+    #labels_gt._keras_shape = tuple(labels_gt.get_shape().as_list())
 
     if metrics == 'dice':
         last_tensor = layers.DiceLoss()([labels_gt, last_tensor])
