@@ -398,9 +398,37 @@ def conv_dec(nb_features,
         input_tensor = KL.Input(shape=input_shape, name=input_name)
         last_tensor = input_tensor
     else:
-        input_tensor = input_model.input
-        last_tensor = input_model.output
-        input_shape = last_tensor.shape.as_list()[1:]
+        # The 'input_model' may expose .inputs/.outputs as lists; pick the first
+        if hasattr(input_model, 'inputs'):
+            input_tensor = input_model.inputs[0] if isinstance(input_model.inputs, (list, tuple)) else input_model.inputs
+        else:
+            input_tensor = input_model.input
+        if hasattr(input_model, 'outputs'):
+            last_tensor = input_model.outputs[0] if isinstance(input_model.outputs, (list, tuple)) else input_model.outputs
+        else:
+            last_tensor = input_model.output
+        # Ensure the 'last_tensor' is a tensor (defensive)
+        if isinstance(last_tensor, list):
+            last_tensor = last_tensor[0]
+        #input_tensor = input_model.input
+        #last_tensor = input_model.output
+        #input_shape = last_tensor.shape.as_list()[1:]
+        # Extract input shape robustly: prefer K.int_shape which returns a Python tuple
+        int_shape = K.int_shape(last_tensor)
+
+        if int_shape is None:
+            # Fallback: try attribute .shape, which may be a TensorShape or tuple
+            ts = getattr(last_tensor, 'shape', None)
+            if hasattr(ts, 'as_list'):
+                int_shape = ts.as_list()
+            else:
+                # The 'ts' might be a plain tuple
+                int_shape = tuple(ts) if ts is not None else None
+
+        if int_shape is None:
+            raise ValueError("Could not infer shape from 'input_model' output in 'conv_dec'!")
+
+        input_shape = list(int_shape)[1:]
 
     # vol size info
     ndims = len(input_shape) - 1
