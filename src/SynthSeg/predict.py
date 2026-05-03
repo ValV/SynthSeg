@@ -557,7 +557,22 @@ def postprocess(post_patch, shape, pad_idx, crop_idx, n_dims,
 
 
 def get_flip_indices(labels_segmentation, n_neutral_labels):
+    """
+    Get flip indices for left/right label correspondence.
+    Robustly handles mismatched or missing labels in left/right pairs.
+    IMPORTANT: n_neutral_labels must match your label structure!
 
+    Expected structure:
+        labels = [0, 1, 2, ..., n_neutral_labels-1,       # Neutral labels
+                  L1, L2, L3, ...,                        # Left structures
+                  R1, R2, R3, ...]                        # Right structures (paired with left)
+
+    Example (brain):
+        n_neutral_labels = 19
+        labels = [0, 1, ..., 18,                          # 19 neutral
+                  3, 10, 11, ...,                         # Left (e.g., 3=left cortex)
+                  42, 49, 50, ...]                        # Right (corresponding pairs)
+    """
     # get position labels
     n_sided_labels = int((len(labels_segmentation) - n_neutral_labels) / 2)
     neutral_labels = labels_segmentation[:n_neutral_labels]
@@ -573,25 +588,47 @@ def get_flip_indices(labels_segmentation, n_neutral_labels):
     # get unique labels
     labels_segmentation, unique_idx = np.unique(labels_segmentation, return_index=True)
 
-    # get indices of corresponding labels
-    lr_indices = np.zeros_like(lr_corresp_unique)
+    # FIX: get indices of corresponding labels (extract scalar from np.where)
+    lr_indices = np.zeros_like(lr_corresp_unique, dtype=np.int64)
     for i in range(lr_corresp_unique.shape[0]):
         for j, lab in enumerate(lr_corresp_unique[i]):
-            lr_indices[i, j] = np.where(labels_segmentation == lab)[0][0]
+            # FIX: handle case where label might not be found
+            where_mask = np.where(labels_segmentation == lab)[0]
+            if len(where_mask) > 0:
+                lr_indices[i, j] = where_mask[0]
+            else:
+                raise ValueError(
+                        f"Label {lab} not found in 'labels_segmentation'. "
+                        f"Check that 'n_neutral_labels' ({n_neutral_labels}) "
+                        f"matches the label structure: {labels_segmentation}"
+                )
 
-    # build 1d vector to swap LR corresponding labels taking into account neutral labels
-    flip_indices = np.zeros_like(labels_segmentation)
+    # FIX: build 1d vector to swap LR corresponding labels taking into account neutral labels
+    flip_indices = np.zeros_like(labels_segmentation, dtype=np.int64)
     for i in range(len(flip_indices)):
         if labels_segmentation[i] in neutral_labels:
             flip_indices[i] = i
         elif labels_segmentation[i] in left:
+            # FIX: Check if match exists before indexing
             indices = np.where(lr_corresp_unique[0, :] == labels_segmentation[i])[0]
             if len(indices) > 0:
                 flip_indices[i] = lr_indices[1, indices[0]]
             else:
-                flip_indices[i] = i  # FIXME: fallback or raise
+                #flip_indices[i] = i  # FIXME: fallback or raise
+                raise ValueError(
+                        f"Left label {labels_segmentation[i]} has no right "
+                        f"correspondence. Check label structure cinsistency."
+                )
         else:
-            flip_indices[i] = lr_indices[0, np.where(lr_corresp_unique[1, :] == labels_segmentation[i])[0][0]]
+            # FIX: Check if match exists before indexing
+            indices = np.where(lr_corresp_unique[1, :] == labels_segmentation[i])[0]
+            if len(indices) > 0:
+                flip_indices[i] = lr_indices[0, indices[0]]
+            else:
+                raise ValueError(
+                        f"Right label {labels_segmentation[i]} has no left "
+                        f"correspondence. Check label structure consistency."
+                )
 
     return labels_segmentation, flip_indices, unique_idx
 
